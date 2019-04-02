@@ -1,8 +1,9 @@
-# TODO: Fix layout in target tab
-# TODO: Implement some kind of progress on target page, and in results table
+# TODO: Implement some kind of progressbar on results page, and in results table
+# TODO: Stop using BorderLayout and move over entirely to GridBagLayout
 # TODO: Put response code/size/etc in results
-# TODO: Tidy up/theme instructions
+# TODO: Tidy up/theme in instructions
 # TODO: Implement option for parallel requests
+# TODO: Weight column widths, if possible
 
 from burp import (IBurpExtender, ITab, IContextMenuFactory,
                   IMessageEditorController)
@@ -16,7 +17,7 @@ from javax.swing import (JTabbedPane, JPanel, JLabel, Box, JTextField,
                          JTextArea, JCheckBox, JMenuItem, JButton, JTable,
                          JScrollPane)
 from javax.swing.table import DefaultTableModel
-from java.awt import BorderLayout
+from java.awt import BorderLayout, GridBagLayout, GridBagConstraints, Insets
 
 EXTENSION_NAME = "Multi-Time Based Attacker"
 INSTRUCTIONS = (
@@ -77,84 +78,192 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
     # Implement IBurpExtender
     def registerExtenderCallbacks(self, callbacks):
 
+        callbacks.registerContextMenuFactory(self)
+
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
 
         callbacks.setExtensionName(EXTENSION_NAME)
 
-        callbacks.registerContextMenuFactory(self)
+        # Construct UI
 
         self._tabbedPane = JTabbedPane()
 
-        targetViewer = JPanel(BorderLayout())
-        verticalBox = Box.createVerticalBox()
+        insets = Insets(3, 3, 3, 3)
 
-        hostHorizontalBox = Box.createHorizontalBox()
-        hostHorizontalBox.add(JLabel("Host:"))
-        self._hostTextField = JTextField("", 10)
-        hostHorizontalBox.add(self._hostTextField)
-        verticalBox.add(hostHorizontalBox)
+        # Target Panel
+        attackPanel = JPanel(GridBagLayout())
 
-        portHorizontalBox = Box.createHorizontalBox()
-        portHorizontalBox.add(JLabel("Port:"))
-        self._portTextField = JTextField("", 10)
-        portHorizontalBox.add(self._portTextField)
-        verticalBox.add(portHorizontalBox)
+        targetHeadingLabel = JLabel("<html><b>Target</b></html>")
+        targetHeadingLabelConstraints = GridBagConstraints()
+        targetHeadingLabelConstraints.gridx = 0
+        targetHeadingLabelConstraints.gridy = 0
+        targetHeadingLabelConstraints.gridwidth = 4
+        targetHeadingLabelConstraints.anchor = GridBagConstraints.LINE_START
+        targetHeadingLabelConstraints.insets = insets
+        attackPanel.add(targetHeadingLabel, targetHeadingLabelConstraints)
 
-        transportHorizontalBox = Box.createHorizontalBox()
-        self._protocolCheckBox = JCheckBox()
-        transportHorizontalBox.add(self._protocolCheckBox)
-        transportHorizontalBox.add(JLabel("Use HTTPS"))
-        verticalBox.add(transportHorizontalBox)
+        startAttackButton = JButton(
+            "<html><b>Start Attack</b></html>", actionPerformed=self._startAttack)
+        startAttackButtonConstraints = GridBagConstraints()
+        startAttackButtonConstraints.gridx = 4
+        startAttackButtonConstraints.gridy = 0
+        startAttackButtonConstraints.insets = insets
+        attackPanel.add(startAttackButton, startAttackButtonConstraints)
 
-        verticalBox.add(JLabel("Request:"))
+        hostLabel = JLabel("Host:")
+        hostLabelConstraints = GridBagConstraints()
+        hostLabelConstraints.gridx = 0
+        hostLabelConstraints.gridy = 1
+        hostLabelConstraints.anchor = GridBagConstraints.LINE_START
+        hostLabelConstraints.insets = insets
+        attackPanel.add(hostLabel, hostLabelConstraints)
+
+        self._hostTextField = JTextField(25)
+        self._hostTextField.setMinimumSize(
+            self._hostTextField.getPreferredSize());
+        hostTextFieldConstraints = GridBagConstraints()
+        hostTextFieldConstraints.gridx = 1
+        hostTextFieldConstraints.gridy = 1
+        hostTextFieldConstraints.weightx = 1
+        hostTextFieldConstraints.gridwidth = 2
+        hostTextFieldConstraints.anchor = GridBagConstraints.LINE_START
+        hostTextFieldConstraints.insets = insets
+        attackPanel.add(self._hostTextField, hostTextFieldConstraints)
+
+        portLabel = JLabel("Port:")
+        portLabelConstraints = GridBagConstraints()
+        portLabelConstraints.gridx = 0
+        portLabelConstraints.gridy = 2
+        portLabelConstraints.anchor = GridBagConstraints.LINE_START
+        portLabelConstraints.insets = insets
+        attackPanel.add(portLabel, portLabelConstraints)
+
+        self._portTextField = JTextField(5)
+        self._portTextField.setMinimumSize(
+            self._portTextField.getPreferredSize());
+        portTextFieldConstraints = GridBagConstraints()
+        portTextFieldConstraints.gridx = 1
+        portTextFieldConstraints.gridy = 2
+        portTextFieldConstraints.gridwidth = 2
+        portTextFieldConstraints.anchor = GridBagConstraints.LINE_START
+        portTextFieldConstraints.insets = insets
+        attackPanel.add(self._portTextField, portTextFieldConstraints)
+
+        self._protocolCheckBox = JCheckBox("Use HTTPS")
+        protocolCheckBoxConstraints = GridBagConstraints()
+        protocolCheckBoxConstraints.gridx = 0
+        protocolCheckBoxConstraints.gridy = 3
+        protocolCheckBoxConstraints.gridwidth = 3
+        protocolCheckBoxConstraints.anchor = GridBagConstraints.LINE_START
+        protocolCheckBoxConstraints.insets = insets
+        attackPanel.add(self._protocolCheckBox, protocolCheckBoxConstraints)
+
+        requestHeadingLabel = JLabel("<html><b>Request</b></html>")
+        requestHeadingLabelConstraints = GridBagConstraints()
+        requestHeadingLabelConstraints.gridx = 0
+        requestHeadingLabelConstraints.gridy = 4
+        requestHeadingLabelConstraints.gridwidth = 4
+        requestHeadingLabelConstraints.anchor = GridBagConstraints.LINE_START
+        requestHeadingLabelConstraints.insets = insets
+        attackPanel.add(requestHeadingLabel, requestHeadingLabelConstraints)
+
         self._messageEditor = callbacks.createMessageEditor(self, True)
         messageEditorComponent = self._messageEditor.getComponent()
-        verticalBox.add(messageEditorComponent)
+        messageEditorComponentConstraints = GridBagConstraints()
+        messageEditorComponentConstraints.gridx = 0
+        messageEditorComponentConstraints.gridy = 5
+        messageEditorComponentConstraints.weightx = 1
+        messageEditorComponentConstraints.weighty = .75
+        messageEditorComponentConstraints.gridwidth = 4
+        messageEditorComponentConstraints.gridheight = 2
+        messageEditorComponentConstraints.fill = GridBagConstraints.BOTH
+        messageEditorComponentConstraints.insets = insets
+        attackPanel.add(messageEditorComponent, messageEditorComponentConstraints)
 
-        verticalBox.add(JButton(
-            "Add Payload At Position", actionPerformed=self._addPayload))
+        addPayloadButton = JButton(
+            "Add \xa7", actionPerformed=self._addPayload)
+        addPayloadButtonConstraints = GridBagConstraints()
+        addPayloadButtonConstraints.gridx = 4
+        addPayloadButtonConstraints.gridy = 5
+        addPayloadButtonConstraints.fill = GridBagConstraints.HORIZONTAL
+        addPayloadButtonConstraints.insets = insets
+        attackPanel.add(addPayloadButton, addPayloadButtonConstraints)
 
-        verticalBox.add(JButton(
-            "Clear Payloads", actionPerformed=self._clearPayloads))
+        clearPayloadButton = JButton(
+            "Clear \xa7", actionPerformed=self._clearPayloads)
+        clearPayloadButtonConstraints = GridBagConstraints()
+        clearPayloadButtonConstraints.gridx = 4
+        clearPayloadButtonConstraints.gridy = 6
+        clearPayloadButtonConstraints.anchor = GridBagConstraints.PAGE_START
+        clearPayloadButtonConstraints.fill = GridBagConstraints.HORIZONTAL
+        clearPayloadButtonConstraints.insets = insets
+        attackPanel.add(clearPayloadButton, clearPayloadButtonConstraints)
 
-        numReqHorizontalBox = Box.createHorizontalBox()
-        numReqHorizontalBox.add(JLabel("Number of Requests:"))
-        self._numReqTextField = JTextField("5", 10)
-        self._numReqTextField.setColumns(10)
-        numReqHorizontalBox.add(self._numReqTextField)
-        verticalBox.add(numReqHorizontalBox)
+        payloadHeadingLabel = JLabel("<html><b>Payloads<b></html>")
+        payloadHeadingLabelConstraints = GridBagConstraints()
+        payloadHeadingLabelConstraints.gridx = 0
+        payloadHeadingLabelConstraints.gridy = 7
+        payloadHeadingLabelConstraints.gridwidth = 4
+        payloadHeadingLabelConstraints.anchor = GridBagConstraints.LINE_START
+        payloadHeadingLabelConstraints.insets = insets
+        attackPanel.add(payloadHeadingLabel, payloadHeadingLabelConstraints)
 
-        verticalBox.add(JLabel("Payloads:"))
         self._payloadTextArea = JTextArea()
-        verticalBox.add(self._payloadTextArea)
+        payloadScrollPane = JScrollPane(self._payloadTextArea)
+        payloadScrollPaneConstraints = GridBagConstraints()
+        payloadScrollPaneConstraints.gridx = 0
+        payloadScrollPaneConstraints.gridy = 8
+        payloadScrollPaneConstraints.weighty = .25
+        payloadScrollPaneConstraints.gridwidth = 3
+        payloadScrollPaneConstraints.fill = GridBagConstraints.BOTH
+        payloadScrollPaneConstraints.insets = insets
+        attackPanel.add(payloadScrollPane, payloadScrollPaneConstraints)
 
-        verticalBox.add(JButton(
-            "Start Attack", actionPerformed=self._startAttack))
+        requestsNumberLabel = JLabel("Number of requests for each payload:")
+        requestsNumberLabelConstraints = GridBagConstraints()
+        requestsNumberLabelConstraints.gridx = 0
+        requestsNumberLabelConstraints.gridy = 9
+        requestsNumberLabelConstraints.gridwidth = 2
+        requestsNumberLabelConstraints.anchor = GridBagConstraints.LINE_START
+        requestsNumberLabelConstraints.insets = insets
+        attackPanel.add(requestsNumberLabel, requestsNumberLabelConstraints)
 
-        targetScrollPane = JScrollPane(verticalBox)
+        self._requestsNumberTextField = JTextField("5", 4)
+        self._requestsNumberTextField.setMinimumSize(
+            self._requestsNumberTextField.getPreferredSize())
+        requestsNumberTextFieldConstraints = GridBagConstraints()
+        requestsNumberTextFieldConstraints.gridx = 2
+        requestsNumberTextFieldConstraints.gridy = 9
+        requestsNumberTextFieldConstraints.anchor = GridBagConstraints.LINE_START
+        requestsNumberTextFieldConstraints.insets = insets
+        attackPanel.add(self._requestsNumberTextField, requestsNumberTextFieldConstraints)
 
-        targetViewer.add(targetScrollPane, BorderLayout.NORTH)
-
-        resultsViewer = JPanel(BorderLayout())
-
+        # Results Panel
+        resultsPanel = JPanel(BorderLayout())
         self._resultsTableModel = DefaultTableModel(
             ["Payload", "Number of Requests", "Minimum",
              "Maximum", "Mean", "Median", "Mode"], 0)
-
         resultsTable = JTable(self._resultsTableModel)
         resultsTable.setAutoCreateRowSorter(True)
         resultsScrollPane = JScrollPane(resultsTable)
-        resultsViewer.add(resultsScrollPane)
+        resultsPanel.add(resultsScrollPane)
 
-        instructionsViewer = JPanel(BorderLayout())
+        # Instructions Panel
+        instructionsPanel = JPanel(GridBagLayout())
         instructionsLabel = JLabel(INSTRUCTIONS)
-        instructionsScrollPane = JScrollPane(instructionsLabel)
-        instructionsViewer.add(instructionsScrollPane, BorderLayout.NORTH)
+        instructionsLabelConstraints = GridBagConstraints()
+        instructionsLabelConstraints.weightx = 1
+        instructionsLabelConstraints.weighty = 1
+        instructionsLabelConstraints.insets = insets
+        instructionsLabelConstraints.fill = GridBagConstraints.HORIZONTAL
+        instructionsLabelConstraints.anchor = GridBagConstraints.PAGE_START
 
-        self._tabbedPane.addTab("Target", targetViewer)
-        self._tabbedPane.addTab("Results", resultsViewer)
-        self._tabbedPane.addTab("Instructions", instructionsViewer)
+        instructionsPanel.add(instructionsLabel, instructionsLabelConstraints)
+
+        self._tabbedPane.addTab("Attack", attackPanel)
+        self._tabbedPane.addTab("Results", resultsPanel)
+        self._tabbedPane.addTab("Instructions", instructionsPanel)
 
         callbacks.addSuiteTab(self)
 
@@ -264,7 +373,7 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         protocol = "https" if self._protocolCheckBox.isSelected() else "http"
         self._httpService = self._helpers.buildHttpService(host, port, protocol)
         self._request = self._updateContentLength(self._messageEditor.getMessage())
-        self._numReq = int(self._numReqTextField.text)
+        self._numReq = int(self._requestsNumberTextField.text)
         self._payloads = self._payloadTextArea.text
 
     def _addPayload(self, _):
