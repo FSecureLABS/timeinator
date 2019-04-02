@@ -1,7 +1,5 @@
-# TODO: Implement some kind of progressbar on results page, and in results table
-# TODO: Stop using BorderLayout and move over entirely to GridBagLayout
+# TODO: Display results in table as they come in, one by one.
 # TODO: Put response code/size/etc in results
-# TODO: Tidy up/theme in instructions
 # TODO: Implement option for parallel requests
 # TODO: Weight column widths, if possible
 
@@ -15,9 +13,9 @@ from time import time
 
 from javax.swing import (JTabbedPane, JPanel, JLabel, Box, JTextField,
                          JTextArea, JCheckBox, JMenuItem, JButton, JTable,
-                         JScrollPane)
+                         JScrollPane, JProgressBar)
 from javax.swing.table import DefaultTableModel
-from java.awt import BorderLayout, GridBagLayout, GridBagConstraints, Insets
+from java.awt import GridBagLayout, GridBagConstraints, Insets
 
 EXTENSION_NAME = "Multi-Time Based Attacker"
 INSTRUCTIONS = (
@@ -240,14 +238,30 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         attackPanel.add(self._requestsNumberTextField, requestsNumberTextFieldConstraints)
 
         # Results Panel
-        resultsPanel = JPanel(BorderLayout())
+        resultsPanel = JPanel(GridBagLayout())
+
+        self._progressBar = JProgressBar()
+        self._progressBar.setMinimum(0)
+        progressBarContraints = GridBagConstraints()
+        progressBarContraints.gridx = 0
+        progressBarContraints.gridy = 0
+        progressBarContraints.fill = GridBagConstraints.HORIZONTAL
+
+        resultsPanel.add(self._progressBar, progressBarContraints)
+
         self._resultsTableModel = DefaultTableModel(
-            ["Payload", "Number of Requests", "Minimum",
-             "Maximum", "Mean", "Median", "Mode"], 0)
+            ["Payload", "Number of Requests", "Status Code",
+             "Minimum", "Maximum", "Mean", "Median", "Mode"], 0)
         resultsTable = JTable(self._resultsTableModel)
         resultsTable.setAutoCreateRowSorter(True)
         resultsScrollPane = JScrollPane(resultsTable)
-        resultsPanel.add(resultsScrollPane)
+        resultsScrollPaneConstraints = GridBagConstraints()
+        resultsScrollPaneConstraints.gridx = 0
+        resultsScrollPaneConstraints.gridy = 1
+        resultsScrollPaneConstraints.weightx = 1
+        resultsScrollPaneConstraints.weighty = 1
+        resultsScrollPaneConstraints.fill = GridBagConstraints.BOTH
+        resultsPanel.add(resultsScrollPane, resultsScrollPaneConstraints)
 
         # Instructions Panel
         instructionsPanel = JPanel(GridBagLayout())
@@ -331,6 +345,10 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
 
         self._responses = {}
         payloads = set(self._payloads.splitlines())
+
+        # Set progress bar max to number of requests
+        self._progressBar.setMaximum(len(payloads) * self._numReq)
+
         start_new_thread(self._makeHttpRequest, (payloads,))
 
     def _makeHttpRequest(self, payloads):
@@ -345,10 +363,12 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
                 # crude, but it's as good as we can get with current Burp APIs
                 # See https://bit.ly/2JX29Nf
                 startTime =time()
-                self._callbacks.makeHttpRequest(
+                response = self._callbacks.makeHttpRequest(
                     self._httpService, request)
                 endTime = time()
                 duration = endTime - startTime
+
+                self._progressBar.setValue(self._progressBar.getValue() + 1)
 
                 self._responses[payload].append(duration)
 
@@ -358,13 +378,15 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
                     # Add results to results tab
                     results = self._responses[payload]
                     numReqs = self._numReq
+                    statusCode = response.getStatusCode()
                     meanTime = mean(results)
                     medianTime = median(results)
                     modeTime = mode(results)
                     minTime = min(results)
                     maxTime = max(results)
-                    rowData = [payload, numReqs, minTime, maxTime,
-                               meanTime, medianTime, modeTime]
+                    rowData = [
+                        payload, numReqs, statusCode, minTime,
+                        maxTime, meanTime, medianTime, modeTime]
                     self._resultsTableModel.addRow(rowData)
 
     def _updateClassFromUI(self):
