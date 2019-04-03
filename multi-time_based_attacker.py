@@ -432,7 +432,7 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
             self, table, value, isSelected, hasFocus, row, column):
         renderer = DefaultTableCellRenderer.getTableCellRendererComponent(
                 self, table, value, isSelected, hasFocus, row, column)
-        value = table.getModel().getValueAt(row, column)
+        value = table.getValueAt(row, column)
         red = value
         green = 1 - value
         color = Color(red, green, 0)
