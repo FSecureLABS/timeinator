@@ -14,8 +14,8 @@ from time import time
 from javax.swing import (JTabbedPane, JPanel, JLabel, Box, JTextField,
                          JTextArea, JCheckBox, JMenuItem, JButton, JTable,
                          JScrollPane, JProgressBar)
-from javax.swing.table import DefaultTableModel
-from java.awt import GridBagLayout, GridBagConstraints, Insets
+from javax.swing.table import DefaultTableModel, DefaultTableCellRenderer
+from java.awt import Color, GridBagLayout, GridBagConstraints, Insets
 
 EXTENSION_NAME = "Multi-Time Based Attacker"
 INSTRUCTIONS = (
@@ -254,6 +254,10 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
              "Minimum", "Maximum", "Mean", "Median", "Mode"], 0)
         resultsTable = JTable(self._resultsTableModel)
         resultsTable.setAutoCreateRowSorter(True)
+        cellRenderer = ColoredTableCellRenderer()
+        for index in [3,4,5,6]:
+            column = resultsTable.columnModel.getColumn(index)
+            column.cellRenderer = cellRenderer
         resultsScrollPane = JScrollPane(resultsTable)
         resultsScrollPaneConstraints = GridBagConstraints()
         resultsScrollPaneConstraints.gridx = 0
@@ -421,3 +425,14 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         request = self._helpers.toggleRequestMethod(request)
         request = self._helpers.toggleRequestMethod(request)
         return request
+
+
+class ColoredTableCellRenderer(DefaultTableCellRenderer):
+    def getTableCellRendererComponent(self, table, value, isSelected, hasFocus, row, column):
+        renderer = DefaultTableCellRenderer.getTableCellRendererComponent(self, table, value, isSelected, hasFocus, row, column)
+        value = table.getModel().getValueAt(row, column)
+        red = value
+        green = 1 - value
+        color = Color(red, green, 0)
+        renderer.background = color
+        return renderer
