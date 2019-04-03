@@ -428,8 +428,10 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
 
 
 class ColoredTableCellRenderer(DefaultTableCellRenderer):
-    def getTableCellRendererComponent(self, table, value, isSelected, hasFocus, row, column):
-        renderer = DefaultTableCellRenderer.getTableCellRendererComponent(self, table, value, isSelected, hasFocus, row, column)
+    def getTableCellRendererComponent(
+            self, table, value, isSelected, hasFocus, row, column):
+        renderer = DefaultTableCellRenderer.getTableCellRendererComponent(
+                self, table, value, isSelected, hasFocus, row, column)
         value = table.getModel().getValueAt(row, column)
         red = value
         green = 1 - value
