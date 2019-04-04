@@ -1,7 +1,10 @@
 # TODO: Display results in table as they come in, one by one.
-# TODO: Put response code/size/etc in results
+# TODO: Put response size/etc in results
 # TODO: Implement option for parallel requests
-# TODO: Weight column widths, if possible
+# TODO: Error checking, especially whether there are payloads
+# TODO: Refactor - e.g. move UI building into its own method
+# TODO: Make readme.md
+# TODO: Reword INSTRUCTIONS
 
 from burp import (IBurpExtender, ITab, IContextMenuFactory,
                   IMessageEditorController)
@@ -52,6 +55,8 @@ INSTRUCTIONS = (
     "graeme.robinson@mwrinfosecurity.com</a>"
     "</html>"
 )
+COLUMNS = ["Payload", "Number of Requests", "Status Code",
+        "Minimum (ms)", "Maximum (ms)", "Mean (ms)", "Median (ms)"]
 
 def mean(values):
     return sum(values) / len(values)
@@ -65,11 +70,6 @@ def median(values):
     else:
         # Even number of values, so mean of middle two
         return mean([values[l//2], values[(l//2)-1]])
-
-def mode(values):
-    c = Counter(values)
-    modes = [str(k) for k, v in c.items() if v == max(c.values())]
-    return ", ".join(modes)
 
 class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorController):
 
@@ -249,15 +249,21 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
 
         resultsPanel.add(self._progressBar, progressBarContraints)
 
-        self._resultsTableModel = DefaultTableModel(
-            ["Payload", "Number of Requests", "Status Code",
-             "Minimum", "Maximum", "Mean", "Median", "Mode"], 0)
+        self._resultsTableModel = ResultsTableModel(COLUMNS, 0)
         resultsTable = JTable(self._resultsTableModel)
         resultsTable.setAutoCreateRowSorter(True)
         cellRenderer = ColoredTableCellRenderer()
         for index in [3,4,5,6]:
             column = resultsTable.columnModel.getColumn(index)
             column.cellRenderer = cellRenderer
+        resultsTable.getColumnModel().getColumn(0).setPreferredWidth(99999999)
+        resultsTable.getColumnModel().getColumn(1).setMinWidth(160)
+        resultsTable.getColumnModel().getColumn(2).setMinWidth(100)
+        resultsTable.getColumnModel().getColumn(3).setMinWidth(110)
+        resultsTable.getColumnModel().getColumn(4).setMinWidth(110)
+        resultsTable.getColumnModel().getColumn(5).setMinWidth(110)
+        resultsTable.getColumnModel().getColumn(6).setMinWidth(110)
+        resultsTable.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS)
         resultsScrollPane = JScrollPane(resultsTable)
         resultsScrollPaneConstraints = GridBagConstraints()
         resultsScrollPaneConstraints.gridx = 0
@@ -360,17 +366,18 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         for payload in payloads:
             self._responses[payload] = []
             # Stick payload into request at specified position
-            request = re.sub("\xa7[^\xa7]*\xa7", payload, self._request)
+            # Use lambda function for replacement string to stop slashes being escaped
+            request = re.sub("\xa7[^\xa7]*\xa7", lambda x: payload, self._request)
             request = self._updateContentLength(request)
             for _ in xrange(self._numReq):
-                # Make request and work out how long it took. This method is
+                # Make request and work out how long it took in ms. This method is
                 # crude, but it's as good as we can get with current Burp APIs
                 # See https://bit.ly/2JX29Nf
                 startTime =time()
                 response = self._callbacks.makeHttpRequest(
                     self._httpService, request)
                 endTime = time()
-                duration = endTime - startTime
+                duration = (endTime - startTime) * 1000
 
                 self._progressBar.setValue(self._progressBar.getValue() + 1)
 
@@ -383,14 +390,13 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
                     results = self._responses[payload]
                     numReqs = self._numReq
                     statusCode = response.getStatusCode()
-                    meanTime = mean(results)
-                    medianTime = median(results)
-                    modeTime = mode(results)
-                    minTime = min(results)
-                    maxTime = max(results)
+                    meanTime = round(mean(results), 3)
+                    medianTime = round(median(results), 3)
+                    minTime = int(min(results))
+                    maxTime = int(max(results))
                     rowData = [
                         payload, numReqs, statusCode, minTime,
-                        maxTime, meanTime, medianTime, modeTime]
+                        maxTime, meanTime, medianTime]
                     self._resultsTableModel.addRow(rowData)
 
     def _updateClassFromUI(self):
@@ -426,15 +432,49 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         request = self._helpers.toggleRequestMethod(request)
         return request
 
-
+# Required for coloured cells
 class ColoredTableCellRenderer(DefaultTableCellRenderer):
     def getTableCellRendererComponent(
             self, table, value, isSelected, hasFocus, row, column):
         renderer = DefaultTableCellRenderer.getTableCellRendererComponent(
                 self, table, value, isSelected, hasFocus, row, column)
+
+        # Set default colour
+        if isSelected:
+            renderer.background = table.getSelectionBackground()
+        else:
+            renderer.background = table.getBackground()
+        renderer.foreground = table.getForeground()
+
+        # Set background colour of cell from red to green based on times of all
+        # other payloads
         value = table.getValueAt(row, column)
-        red = value
-        green = 1 - value
-        color = Color(red, green, 0)
-        renderer.background = color
+        model = table.getModel()
+        rowsCount = model.getRowCount()
+        if rowsCount > 1:
+            colValues = []
+            for index in xrange(rowsCount):
+                valueAtIndex = model.getValueAt(index, column)
+                colValues.append(valueAtIndex)
+            minBound = min(colValues)
+            maxBound = max(colValues)
+            if minBound != maxBound:
+                valueAsFraction = (value - minBound) / (maxBound - minBound)
+                if valueAsFraction > 0.755555:
+                    renderer.foreground = Color.WHITE
+                if valueAsFraction > 0.5:
+                    red = 1.0
+                else:
+                    red = (valueAsFraction * 2.0)
+                if valueAsFraction < 0.5:
+                    green = 1.0
+                else:
+                    green = 2 - (valueAsFraction * 2.0)
+                color = Color(red, green, 111/256.0)
+                renderer.background = color
         return renderer
+
+# Required for proper sorting
+class ResultsTableModel(DefaultTableModel):
+    def getColumnClass(self, column):
+        return [str, int, int, int, int, float, float][column]
