@@ -1,43 +1,62 @@
-# TODO: Display results in table as they come in, one by one.
-# TODO: Put response size/etc in results
-# TODO: Implement option for parallel requests
-# TODO: Error checking, especially whether there are payloads
-# TODO: Refactor - e.g. move UI building into its own method
+# TODO: Fix progress bar; maybe add label and fix what happens to it when
+#       hitting start twice
+# TODO: Make IP address lookup on separate thread to prevent locking UI
+
+# TODO: Reword about-text
 # TODO: Make readme.md
-# TODO: Reword INSTRUCTIONS
+# TODO: Refactor - e.g. move UI building into its own method, etc
+
+# TODO: Error checking of user input (and network errors?), especially whether
+#       there are payloads
+# TODO: Fix layout of attack tab. (Start button sometimes changes size)
+
+# TODO: Display results in table as they come in, one by one.
+# TODO: Implement option for parallel requests
+# TODO: Try to find a way of looking for obvious signs of timing attacks being
+#       possible (standard deviations?)
+# TODO: Make it so that a new tab is generated for each new "send to"
+# TODO: Consider storing accurate values in the data model, and only limiting
+#       DP when displaying
+# TODO: Load Payloads From file or generate payloads (e.g. numbers)
 
 from burp import (IBurpExtender, ITab, IContextMenuFactory,
                   IMessageEditorController)
 
-from collections import Counter
-import re
+from re import sub
+from socket import gethostbyname
 from thread import start_new_thread
 from time import time
 
-from javax.swing import (JTabbedPane, JPanel, JLabel, Box, JTextField,
+from javax.swing import (JTabbedPane, JPanel, JLabel, JTextField,
                          JTextArea, JCheckBox, JMenuItem, JButton, JTable,
                          JScrollPane, JProgressBar)
 from javax.swing.table import DefaultTableModel, DefaultTableCellRenderer
 from java.awt import Color, GridBagLayout, GridBagConstraints, Insets
+import java.lang
 
 EXTENSION_NAME = "Multi-Time Based Attacker"
-COLUMNS = ["Payload", "Number of Requests", "Status Code",
-        "Minimum (ms)", "Maximum (ms)", "Mean (ms)", "Median (ms)"]
+COLUMNS = [
+    "Payload", "Number of Requests", "Status Code", "Length (B)", "Body (B)",
+    "Minimum (ms)", "Maximum (ms)", "Mean (ms)", "Median (ms)"]
+
 
 def mean(values):
     return sum(values) / len(values)
 
+
 def median(values):
-    l = len(values)
+    length = len(values)
     values.sort()
-    if l % 2 != 0:
+    if length % 2 != 0:
         # Odd number of values, so chose middle one
-        return values[l//2]
+        return values[length//2]
     else:
         # Even number of values, so mean of middle two
-        return mean([values[l//2], values[(l//2)-1]])
+        return mean([values[length//2], values[(length//2)-1]])
 
-class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorController):
+
+class BurpExtender(
+          IBurpExtender, ITab, IContextMenuFactory, IMessageEditorController):
 
     # Implement IBurpExtender
     def registerExtenderCallbacks(self, callbacks):
@@ -67,8 +86,8 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         targetHeadingLabelConstraints.insets = insets
         attackPanel.add(targetHeadingLabel, targetHeadingLabelConstraints)
 
-        startAttackButton = JButton(
-            "<html><b>Start Attack</b></html>", actionPerformed=self._startAttack)
+        startAttackButton = JButton("<html><b>Start Attack</b></html>",
+                                    actionPerformed=self._startAttack)
         startAttackButtonConstraints = GridBagConstraints()
         startAttackButtonConstraints.gridx = 4
         startAttackButtonConstraints.gridy = 0
@@ -85,7 +104,7 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
 
         self._hostTextField = JTextField(25)
         self._hostTextField.setMinimumSize(
-            self._hostTextField.getPreferredSize());
+            self._hostTextField.getPreferredSize())
         hostTextFieldConstraints = GridBagConstraints()
         hostTextFieldConstraints.gridx = 1
         hostTextFieldConstraints.gridy = 1
@@ -105,7 +124,7 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
 
         self._portTextField = JTextField(5)
         self._portTextField.setMinimumSize(
-            self._portTextField.getPreferredSize());
+            self._portTextField.getPreferredSize())
         portTextFieldConstraints = GridBagConstraints()
         portTextFieldConstraints.gridx = 1
         portTextFieldConstraints.gridy = 2
@@ -143,7 +162,8 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         messageEditorComponentConstraints.gridheight = 2
         messageEditorComponentConstraints.fill = GridBagConstraints.BOTH
         messageEditorComponentConstraints.insets = insets
-        attackPanel.add(messageEditorComponent, messageEditorComponentConstraints)
+        attackPanel.add(
+            messageEditorComponent, messageEditorComponentConstraints)
 
         addPayloadButton = JButton(
             "Add \xa7", actionPerformed=self._addPayload)
@@ -184,24 +204,25 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         payloadScrollPaneConstraints.insets = insets
         attackPanel.add(payloadScrollPane, payloadScrollPaneConstraints)
 
-        requestsNumberLabel = JLabel("Number of requests for each payload:")
-        requestsNumberLabelConstraints = GridBagConstraints()
-        requestsNumberLabelConstraints.gridx = 0
-        requestsNumberLabelConstraints.gridy = 9
-        requestsNumberLabelConstraints.gridwidth = 2
-        requestsNumberLabelConstraints.anchor = GridBagConstraints.LINE_START
-        requestsNumberLabelConstraints.insets = insets
-        attackPanel.add(requestsNumberLabel, requestsNumberLabelConstraints)
+        requestsNumLabel = JLabel("Number of requests for each payload:")
+        requestsNumLabelConstraints = GridBagConstraints()
+        requestsNumLabelConstraints.gridx = 0
+        requestsNumLabelConstraints.gridy = 9
+        requestsNumLabelConstraints.gridwidth = 2
+        requestsNumLabelConstraints.anchor = GridBagConstraints.LINE_START
+        requestsNumLabelConstraints.insets = insets
+        attackPanel.add(requestsNumLabel, requestsNumLabelConstraints)
 
-        self._requestsNumberTextField = JTextField("5", 4)
-        self._requestsNumberTextField.setMinimumSize(
-            self._requestsNumberTextField.getPreferredSize())
-        requestsNumberTextFieldConstraints = GridBagConstraints()
-        requestsNumberTextFieldConstraints.gridx = 2
-        requestsNumberTextFieldConstraints.gridy = 9
-        requestsNumberTextFieldConstraints.anchor = GridBagConstraints.LINE_START
-        requestsNumberTextFieldConstraints.insets = insets
-        attackPanel.add(self._requestsNumberTextField, requestsNumberTextFieldConstraints)
+        self._requestsNumTextField = JTextField("5", 4)
+        self._requestsNumTextField.setMinimumSize(
+            self._requestsNumTextField.getPreferredSize())
+        requestsNumTextFieldConstraints = GridBagConstraints()
+        requestsNumTextFieldConstraints.gridx = 2
+        requestsNumTextFieldConstraints.gridy = 9
+        requestsNumTextFieldConstraints.anchor = GridBagConstraints.LINE_START
+        requestsNumTextFieldConstraints.insets = insets
+        attackPanel.add(
+            self._requestsNumTextField, requestsNumTextFieldConstraints)
 
         # Results Panel
         resultsPanel = JPanel(GridBagLayout())
@@ -219,16 +240,18 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         resultsTable = JTable(self._resultsTableModel)
         resultsTable.setAutoCreateRowSorter(True)
         cellRenderer = ColoredTableCellRenderer()
-        for index in [3,4,5,6]:
+        for index in [5, 6, 7, 8]:
             column = resultsTable.columnModel.getColumn(index)
             column.cellRenderer = cellRenderer
         resultsTable.getColumnModel().getColumn(0).setPreferredWidth(99999999)
         resultsTable.getColumnModel().getColumn(1).setMinWidth(160)
         resultsTable.getColumnModel().getColumn(2).setMinWidth(100)
-        resultsTable.getColumnModel().getColumn(3).setMinWidth(110)
-        resultsTable.getColumnModel().getColumn(4).setMinWidth(110)
+        resultsTable.getColumnModel().getColumn(3).setMinWidth(80)
+        resultsTable.getColumnModel().getColumn(4).setMinWidth(80)
         resultsTable.getColumnModel().getColumn(5).setMinWidth(110)
         resultsTable.getColumnModel().getColumn(6).setMinWidth(110)
+        resultsTable.getColumnModel().getColumn(7).setMinWidth(110)
+        resultsTable.getColumnModel().getColumn(8).setMinWidth(110)
         resultsTable.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS)
         resultsScrollPane = JScrollPane(resultsTable)
         resultsScrollPaneConstraints = GridBagConstraints()
@@ -239,24 +262,24 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         resultsScrollPaneConstraints.fill = GridBagConstraints.BOTH
         resultsPanel.add(resultsScrollPane, resultsScrollPaneConstraints)
 
-        # Instructions Panel
-        instructionsPanel = JPanel(GridBagLayout())
-        with open("instructions.html") as file:
-            instructions = file.read()
-        instructionsLabel = JLabel(
-                instructions.format(extension_name = EXTENSION_NAME))
-        instructionsLabelConstraints = GridBagConstraints()
-        instructionsLabelConstraints.weightx = 1
-        instructionsLabelConstraints.weighty = 1
-        instructionsLabelConstraints.insets = insets
-        instructionsLabelConstraints.fill = GridBagConstraints.HORIZONTAL
-        instructionsLabelConstraints.anchor = GridBagConstraints.PAGE_START
+        # About Panel
+        aboutPanel = JPanel(GridBagLayout())
+        with open("about.html") as file:
+            aboutBody = file.read()
+        aboutLabel = JLabel(
+                aboutBody.format(extension_name=EXTENSION_NAME))
+        aboutLabelConstraints = GridBagConstraints()
+        aboutLabelConstraints.weightx = 1
+        aboutLabelConstraints.weighty = 1
+        aboutLabelConstraints.insets = insets
+        aboutLabelConstraints.fill = GridBagConstraints.HORIZONTAL
+        aboutLabelConstraints.anchor = GridBagConstraints.PAGE_START
 
-        instructionsPanel.add(instructionsLabel, instructionsLabelConstraints)
+        aboutPanel.add(aboutLabel, aboutLabelConstraints)
 
         self._tabbedPane.addTab("Attack", attackPanel)
         self._tabbedPane.addTab("Results", resultsPanel)
-        self._tabbedPane.addTab("Instructions", instructionsPanel)
+        self._tabbedPane.addTab("About", aboutPanel)
 
         callbacks.addSuiteTab(self)
 
@@ -290,7 +313,7 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
             self._contextMenuData = messages
             menu_item = JMenuItem(
                 "Send to {}".format(EXTENSION_NAME),
-                actionPerformed = self._contextMenuItemClicked
+                actionPerformed=self._contextMenuItemClicked
             )
             print "Context menu item added"
             return [menu_item]
@@ -316,6 +339,9 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
 
         print "Attack Start Button Clicked!"
 
+        # Switch to results tab
+        self._tabbedPane.setSelectedIndex(1)
+
         # Set class variables from values in UI
         self._updateClassFromUI()
 
@@ -335,14 +361,15 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         for payload in payloads:
             self._responses[payload] = []
             # Stick payload into request at specified position
-            # Use lambda function for replacement string to stop slashes being escaped
-            request = re.sub("\xa7[^\xa7]*\xa7", lambda x: payload, self._request)
+            # Use lambda function for replacement string to stop slashes being
+            # escaped
+            request = sub("\xa7[^\xa7]*\xa7", lambda x: payload, self._request)
             request = self._updateContentLength(request)
             for _ in xrange(self._numReq):
-                # Make request and work out how long it took in ms. This method is
-                # crude, but it's as good as we can get with current Burp APIs
-                # See https://bit.ly/2JX29Nf
-                startTime =time()
+                # Make request and work out how long it took in ms. This method
+                # is crude, but it's as good as we can get with current Burp
+                # APIs. See https://bit.ly/2JX29Nf
+                startTime = time()
                 response = self._callbacks.makeHttpRequest(
                     self._httpService, request)
                 endTime = time()
@@ -359,22 +386,29 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
                     results = self._responses[payload]
                     numReqs = self._numReq
                     statusCode = response.getStatusCode()
+                    analysis = self._helpers.analyzeResponse(response.getResponse())
+                    for header in analysis.getHeaders():
+                        if header.startswith("Content-Length"):
+                            content_length = int(header.split(": ")[1])
                     meanTime = round(mean(results), 3)
                     medianTime = round(median(results), 3)
                     minTime = int(min(results))
                     maxTime = int(max(results))
                     rowData = [
-                        payload, numReqs, statusCode, minTime,
-                        maxTime, meanTime, medianTime]
+                        payload, numReqs, statusCode, len(response.getResponse()),
+                        content_length, minTime, maxTime, meanTime, medianTime]
                     self._resultsTableModel.addRow(rowData)
 
     def _updateClassFromUI(self):
         host = self._hostTextField.text
+        dest_ip = gethostbyname(host)
         port = int(self._portTextField.text)
         protocol = "https" if self._protocolCheckBox.isSelected() else "http"
-        self._httpService = self._helpers.buildHttpService(host, port, protocol)
-        self._request = self._updateContentLength(self._messageEditor.getMessage())
-        self._numReq = int(self._requestsNumberTextField.text)
+        self._httpService = self._helpers.buildHttpService(
+            dest_ip, port, protocol)
+        self._request = self._updateContentLength(
+            self._messageEditor.getMessage())
+        self._numReq = int(self._requestsNumTextField.text)
         self._payloads = self._payloadTextArea.text
 
     def _addPayload(self, _):
@@ -401,22 +435,15 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IMessageEditorContr
         request = self._helpers.toggleRequestMethod(request)
         return request
 
+
 # Required for coloured cells
 class ColoredTableCellRenderer(DefaultTableCellRenderer):
     def getTableCellRendererComponent(
             self, table, value, isSelected, hasFocus, row, column):
+
         renderer = DefaultTableCellRenderer.getTableCellRendererComponent(
                 self, table, value, isSelected, hasFocus, row, column)
 
-        # Set default colour
-        if isSelected:
-            renderer.background = table.getSelectionBackground()
-        else:
-            renderer.background = table.getBackground()
-        renderer.foreground = table.getForeground()
-
-        # Set background colour of cell from red to green based on times of all
-        # other payloads
         value = table.getValueAt(row, column)
         model = table.getModel()
         rowsCount = model.getRowCount()
@@ -429,8 +456,10 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
             maxBound = max(colValues)
             if minBound != maxBound:
                 valueAsFraction = (value - minBound) / (maxBound - minBound)
-                if valueAsFraction > 0.755555:
+                if valueAsFraction > 0.75:
                     renderer.foreground = Color.WHITE
+                else:
+                    renderer.foreground = Color.BLACK
                 if valueAsFraction > 0.5:
                     red = 1.0
                 else:
@@ -439,11 +468,37 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
                     green = 1.0
                 else:
                     green = 2 - (valueAsFraction * 2.0)
-                color = Color(red, green, 111/256.0)
-                renderer.background = color
+                blue = 111/256.0
+
+                if isSelected:
+                    red -= 0.25
+                    if red < 0:
+                        red = 0.0
+
+                    green -= 0.25
+                    if green < 0:
+                        green = 0.0
+
+                    blue -= 0.25
+                    if blue < 0:
+                        blue = 0.0
+
+                renderer.background = Color(red, green, blue)
         return renderer
+
 
 # Required for proper sorting
 class ResultsTableModel(DefaultTableModel):
     def getColumnClass(self, column):
-        return [str, int, int, int, int, float, float][column]
+        # TODO: Is is really necesarry to use Java types here?
+        types = [
+            java.lang.String,
+            java.lang.Integer,
+            java.lang.Integer,
+            java.lang.Integer,
+            java.lang.Integer,
+            java.lang.Integer,
+            java.lang.Integer,
+            java.lang.Float,
+            java.lang.Float]
+        return types[column]
