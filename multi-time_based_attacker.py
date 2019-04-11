@@ -1,10 +1,7 @@
-# TODO: Fix progress bar; maybe add label and fix what happens to it when
-#       hitting start twice
-
 # TODO: Reword about-text
 # TODO: Make readme.md
-# TODO: Refactor - e.g. move UI building into its own method, etc
 
+# TODO: Refactor - e.g. move UI building into its own method, etc
 # TODO: Error checking of user input (and network errors?), especially whether
 #       there are payloads
 # TODO: Fix layout of attack tab. (Start button sometimes changes size)
@@ -18,9 +15,6 @@
 #       DP when displaying
 # TODO: Load Payloads From file or generate payloads (e.g. numbers)
 
-from burp import (IBurpExtender, ITab, IContextMenuFactory,
-                  IMessageEditorController)
-
 from re import sub
 from socket import gethostbyname
 from threading import Thread
@@ -32,6 +26,9 @@ from javax.swing import (JTabbedPane, JPanel, JLabel, JTextField,
 from javax.swing.table import DefaultTableModel, DefaultTableCellRenderer
 from java.awt import Color, GridBagLayout, GridBagConstraints, Insets
 import java.lang
+
+from burp import (
+    IBurpExtender, ITab, IContextMenuFactory, IMessageEditorController)
 
 EXTENSION_NAME = "Multi-Time Based Attacker"
 COLUMNS = [
@@ -227,6 +224,7 @@ class BurpExtender(
         resultsPanel = JPanel(GridBagLayout())
 
         self._progressBar = JProgressBar()
+        self._progressBar.setStringPainted(True)
         self._progressBar.setMinimum(0)
         progressBarContraints = GridBagConstraints()
         progressBarContraints.gridx = 0
@@ -344,7 +342,10 @@ class BurpExtender(
         # Clear results table
         self._resultsTableModel.setRowCount(0)
 
-        Thread(target = self._makeHttpRequests).start()
+        # Set progress bar to 0%
+        self._progressBar.setValue(0)
+
+        Thread(target=self._makeHttpRequests).start()
 
     def _makeHttpRequests(self):
 
@@ -384,7 +385,8 @@ class BurpExtender(
                     results = self._responses[payload]
                     numReqs = self._numReq
                     statusCode = response.getStatusCode()
-                    analysis = self._helpers.analyzeResponse(response.getResponse())
+                    analysis = self._helpers.analyzeResponse(
+                        response.getResponse())
                     for header in analysis.getHeaders():
                         if header.startswith("Content-Length"):
                             content_length = int(header.split(": ")[1])
@@ -393,8 +395,9 @@ class BurpExtender(
                     minTime = int(min(results))
                     maxTime = int(max(results))
                     rowData = [
-                        payload, numReqs, statusCode, len(response.getResponse()),
-                        content_length, minTime, maxTime, meanTime, medianTime]
+                        payload, numReqs, statusCode,
+                        len(response.getResponse()), content_length, minTime,
+                        maxTime, meanTime, medianTime]
                     self._resultsTableModel.addRow(rowData)
 
     def _updateClassFromUI(self):
@@ -407,7 +410,7 @@ class BurpExtender(
         self._request = self._updateContentLength(
             self._messageEditor.getMessage())
         self._numReq = int(self._requestsNumTextField.text)
-        self._payloads = set(self._payloadTextArea.text)
+        self._payloads = set(self._payloadTextArea.text.split("\n"))
 
     def _addPayload(self, _):
         request = self._messageEditor.getMessage()
@@ -488,7 +491,7 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
 # Required for proper sorting
 class ResultsTableModel(DefaultTableModel):
     def getColumnClass(self, column):
-        # TODO: Is is really necesarry to use Java types here?
+        # Native java types are required here for proper sortings
         types = [
             java.lang.String,
             java.lang.Integer,
