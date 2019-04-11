@@ -1,6 +1,5 @@
 # TODO: Fix progress bar; maybe add label and fix what happens to it when
 #       hitting start twice
-# TODO: Make IP address lookup on separate thread to prevent locking UI
 
 # TODO: Reword about-text
 # TODO: Make readme.md
@@ -8,6 +7,7 @@
 
 # TODO: Error checking of user input (and network errors?), especially whether
 #       there are payloads
+# TODO: Stop using thread module and start using threading instead
 # TODO: Fix layout of attack tab. (Start button sometimes changes size)
 
 # TODO: Display results in table as they come in, one by one.
@@ -342,23 +342,23 @@ class BurpExtender(
         # Switch to results tab
         self._tabbedPane.setSelectedIndex(1)
 
-        # Set class variables from values in UI
-        self._updateClassFromUI()
-
         # Clear results table
         self._resultsTableModel.setRowCount(0)
 
+        # start_new_thread(self._makeHttpRequest, (payloads,))
+        start_new_thread(self._makeHttpRequests, ())
+
+    def _makeHttpRequests(self):
+
+        # Set class variables from values in UI
+        self._updateClassFromUI()
+
         self._responses = {}
-        payloads = set(self._payloads.splitlines())
 
         # Set progress bar max to number of requests
-        self._progressBar.setMaximum(len(payloads) * self._numReq)
+        self._progressBar.setMaximum(len(self._payloads) * self._numReq)
 
-        start_new_thread(self._makeHttpRequest, (payloads,))
-
-    def _makeHttpRequest(self, payloads):
-
-        for payload in payloads:
+        for payload in self._payloads:
             self._responses[payload] = []
             # Stick payload into request at specified position
             # Use lambda function for replacement string to stop slashes being
@@ -409,7 +409,7 @@ class BurpExtender(
         self._request = self._updateContentLength(
             self._messageEditor.getMessage())
         self._numReq = int(self._requestsNumTextField.text)
-        self._payloads = self._payloadTextArea.text
+        self._payloads = set(self._payloadTextArea.text)
 
     def _addPayload(self, _):
         request = self._messageEditor.getMessage()
