@@ -1,0 +1,10 @@
+* Refactor - e.g. move UI building into its own method, etc.
+* Error checking of user input (and network errors), especially whether there are payloads.
+* Fix layout of attack tab. (e.g. Start button sometimes changes size)
+
+* Display results in table as they come in, one by one.
+* Implement option for parallel requests and throttling.
+* Try to find a way of looking for obvious signs of timing attacks being possible (standard deviations?)
+* Make it so that a new tab is generated for each new "send to" action, like Intruder and some other extensions.
+* Consider storing more accurate values in the data model, and only limiting to 3 decimal places when displaying.
+* Load Payloads From file or generate payloads (e.g. list of numbers).

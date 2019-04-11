@@ -1,19 +1,17 @@
-# TODO: Reword about-text
-# TODO: Make readme.md
-
-# TODO: Refactor - e.g. move UI building into its own method, etc
-# TODO: Error checking of user input (and network errors?), especially whether
-#       there are payloads
-# TODO: Fix layout of attack tab. (Start button sometimes changes size)
+# TODO: Refactor - e.g. move UI building into its own method, etc.
+# TODO: Error checking of user input (and network errors), especially whether
+#       there are payloads.
+# TODO: Fix layout of attack tab. (e.g. Start button sometimes changes size)
 
 # TODO: Display results in table as they come in, one by one.
-# TODO: Implement option for parallel requests
+# TODO: Implement option for parallel requests and throttling.
 # TODO: Try to find a way of looking for obvious signs of timing attacks being
 #       possible (standard deviations?)
-# TODO: Make it so that a new tab is generated for each new "send to"
-# TODO: Consider storing accurate values in the data model, and only limiting
-#       DP when displaying
-# TODO: Load Payloads From file or generate payloads (e.g. numbers)
+# TODO: Make it so that a new tab is generated for each new "send to" action,
+#       like Intruder and some other extensions.
+# TODO: Consider storing more accurate values in the data model, and only
+#       limiting to 3 decimal places when displaying.
+# TODO: Load Payloads From file or generate payloads (e.g. list of numbers).
 
 from re import sub
 from socket import gethostbyname
@@ -209,7 +207,7 @@ class BurpExtender(
         requestsNumLabelConstraints.insets = insets
         attackPanel.add(requestsNumLabel, requestsNumLabelConstraints)
 
-        self._requestsNumTextField = JTextField("5", 4)
+        self._requestsNumTextField = JTextField("10", 4)
         self._requestsNumTextField.setMinimumSize(
             self._requestsNumTextField.getPreferredSize())
         requestsNumTextFieldConstraints = GridBagConstraints()
