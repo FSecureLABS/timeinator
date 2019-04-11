@@ -7,7 +7,6 @@
 
 # TODO: Error checking of user input (and network errors?), especially whether
 #       there are payloads
-# TODO: Stop using thread module and start using threading instead
 # TODO: Fix layout of attack tab. (Start button sometimes changes size)
 
 # TODO: Display results in table as they come in, one by one.
@@ -24,7 +23,7 @@ from burp import (IBurpExtender, ITab, IContextMenuFactory,
 
 from re import sub
 from socket import gethostbyname
-from thread import start_new_thread
+from threading import Thread
 from time import time
 
 from javax.swing import (JTabbedPane, JPanel, JLabel, JTextField,
@@ -345,8 +344,7 @@ class BurpExtender(
         # Clear results table
         self._resultsTableModel.setRowCount(0)
 
-        # start_new_thread(self._makeHttpRequest, (payloads,))
-        start_new_thread(self._makeHttpRequests, ())
+        Thread(target = self._makeHttpRequests).start()
 
     def _makeHttpRequests(self):
 
