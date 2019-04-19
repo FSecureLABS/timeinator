@@ -6,7 +6,7 @@ Multi-Time Based Attacker is an extension for Burp Suite that can be used to per
 
 The attack mode is similar to the "sniper" mode in burp intruder, but instead of sending a single request for every payload, it is able to send multiple requests for each payload and display the minimum and maximum times taken to receive a response as well as the mean and median averages.
 
-The extension sends HTTP(S) requests sequentially to reduce the chance of delays being introduced by overloading the server.
+In an effort to prevent slow DNS lookups introducing delays, the domain is resolved at the start of the attack before any http requests are made. In addition, the extension sends HTTP(S) requests sequentially to reduce the chance of delays being introduced by overloading the server.
 
 ##Usage
 

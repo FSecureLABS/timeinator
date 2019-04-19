@@ -1,18 +1,3 @@
-# TODO: Refactor - e.g. move UI building into its own method, etc.
-# TODO: Error checking of user input (and network errors), especially whether
-#       there are payloads.
-# TODO: Fix layout of attack tab. (e.g. Start button sometimes changes size)
-
-# TODO: Display results in table as they come in, one by one.
-# TODO: Implement option for parallel requests and throttling.
-# TODO: Try to find a way of looking for obvious signs of timing attacks being
-#       possible (standard deviations?)
-# TODO: Make it so that a new tab is generated for each new "send to" action,
-#       like Intruder and some other extensions.
-# TODO: Consider storing more accurate values in the data model, and only
-#       limiting to 3 decimal places when displaying.
-# TODO: Load Payloads From file or generate payloads (e.g. list of numbers).
-
 from re import sub
 from socket import gethostbyname
 from threading import Thread
@@ -300,7 +285,6 @@ class BurpExtender(
 
     # Implement IContextMenuFactory
     def createMenuItems(self, contextMenuInvocation):
-        print "Being queried for context menu items"
         messages = contextMenuInvocation.getSelectedMessages()
 
         # Only add menu item if a single request is selected
@@ -310,13 +294,9 @@ class BurpExtender(
                 "Send to {}".format(EXTENSION_NAME),
                 actionPerformed=self._contextMenuItemClicked
             )
-            print "Context menu item added"
             return [menu_item]
-        else:
-            print "Not adding context menu item this time"
 
     def _contextMenuItemClicked(self, _):
-        print "Context Menu Item Clicked"
         httpRequestResponse = self._contextMenuData[0]
 
         # Update class variables with request data
@@ -331,8 +311,6 @@ class BurpExtender(
         self._messageEditor.setMessage(self._request, True)
 
     def _startAttack(self, _):
-
-        print "Attack Start Button Clicked!"
 
         # Switch to results tab
         self._tabbedPane.setSelectedIndex(1)
@@ -400,11 +378,19 @@ class BurpExtender(
 
     def _updateClassFromUI(self):
         host = self._hostTextField.text
-        dest_ip = gethostbyname(host)
         port = int(self._portTextField.text)
         protocol = "https" if self._protocolCheckBox.isSelected() else "http"
+
+        # I previously tried using the IP address of the destination web server
+        # instead of the hostname when building the HttpService. This was in an
+        # attempt to prevent DNS queries introducing a delay. Unfortunately it
+        # caused issues with HTTPS requests, probably because of SNIs. As an
+        # alternative, the hostname is resolved in the next line and hopefully
+        # it will be cached at that point.
+        gethostbyname(host)
+
         self._httpService = self._helpers.buildHttpService(
-            dest_ip, port, protocol)
+            host, port, protocol)
         self._request = self._updateContentLength(
             self._messageEditor.getMessage())
         self._numReq = int(self._requestsNumTextField.text)
@@ -447,6 +433,9 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
         model = table.getModel()
         rowsCount = model.getRowCount()
         if rowsCount > 1:
+            renderer.setBackground(table.getBackground())
+            renderer.setForeground(table.getForeground())
+        else:
             colValues = []
             for index in xrange(rowsCount):
                 valueAtIndex = model.getValueAt(index, column)
@@ -454,11 +443,12 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
             minBound = min(colValues)
             maxBound = max(colValues)
             if minBound != maxBound:
-                valueAsFraction = (value - minBound) / (maxBound - minBound)
+                valueAsFraction = (
+                    float(value - minBound) / (maxBound - minBound))
                 if valueAsFraction > 0.75:
-                    renderer.foreground = Color.WHITE
+                    renderer.setForeground(Color.WHITE)
                 else:
-                    renderer.foreground = Color.BLACK
+                    renderer.setForeground(Color.BLACK)
                 if valueAsFraction > 0.5:
                     red = 1.0
                 else:
@@ -482,7 +472,7 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
                     if blue < 0:
                         blue = 0.0
 
-                renderer.background = Color(red, green, blue)
+                renderer.setBackground(Color(red, green, blue))
         return renderer
 
 
