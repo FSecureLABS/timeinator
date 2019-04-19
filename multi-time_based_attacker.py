@@ -432,7 +432,7 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
         value = table.getValueAt(row, column)
         model = table.getModel()
         rowsCount = model.getRowCount()
-        if rowsCount > 1:
+        if rowsCount == 1:
             renderer.setBackground(table.getBackground())
             renderer.setForeground(table.getForeground())
         else:
