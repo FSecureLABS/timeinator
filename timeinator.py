@@ -13,7 +13,7 @@ import java.lang
 from burp import (
     IBurpExtender, ITab, IContextMenuFactory, IMessageEditorController)
 
-EXTENSION_NAME = "Multi-Time Based Attacker"
+EXTENSION_NAME = "Timeinator"
 COLUMNS = [
     "Payload", "Number of Requests", "Status Code", "Length (B)", "Body (B)",
     "Minimum (ms)", "Maximum (ms)", "Mean (ms)", "Median (ms)"]
