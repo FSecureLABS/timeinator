@@ -192,7 +192,7 @@ class BurpExtender(
         requestsNumLabelConstraints.insets = insets
         attackPanel.add(requestsNumLabel, requestsNumLabelConstraints)
 
-        self._requestsNumTextField = JTextField("10", 4)
+        self._requestsNumTextField = JTextField("100", 4)
         self._requestsNumTextField.setMinimumSize(
             self._requestsNumTextField.getPreferredSize())
         requestsNumTextFieldConstraints = GridBagConstraints()
@@ -391,8 +391,7 @@ class BurpExtender(
 
         self._httpService = self._helpers.buildHttpService(
             host, port, protocol)
-        self._request = self._updateContentLength(
-            self._messageEditor.getMessage())
+        self._request = self._messageEditor.getMessage()
         self._numReq = int(self._requestsNumTextField.text)
         self._payloads = set(self._payloadTextArea.text.split("\n"))
 
@@ -414,10 +413,12 @@ class BurpExtender(
         self._messageEditor.setMessage(request, True)
 
     def _updateContentLength(self, request):
-        # Dirty trick (toggle type twice) to make burp fix the
-        # Content-Length header
-        request = self._helpers.toggleRequestMethod(request)
-        request = self._helpers.toggleRequestMethod(request)
+        # There surely must be a better way to do this
+        messageSize = len(request)
+        bodyOffset = self._helpers.analyzeRequest(request).getBodyOffset()
+        contentLength = messageSize - bodyOffset
+        contentLengthHeader = "Content-Length: {}".format(contentLength)
+        request = sub("Content-Length: \\d+", contentLengthHeader, request)
         return request
 
 
