@@ -23,7 +23,7 @@ Usage
 Troubleshooting
 ---------------
 
-This extension is wriiten in Python and therefore requires Jython.
+This extension is written in Python and therefore requires Jython.
 
 HTTP(S) requests made by this extension will not be shown in the proxy history, however extensions such as Logger++ (available from the BApp store) will do so.
 
