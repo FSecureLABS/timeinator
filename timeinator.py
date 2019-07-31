@@ -28,10 +28,10 @@ def median(values):
     values.sort()
     if length % 2 != 0:
         # Odd number of values, so chose middle one
-        return values[length//2]
+        return values[length/2]
     else:
         # Even number of values, so mean of middle two
-        return mean([values[length//2], values[(length//2)-1]])
+        return mean([values[length/2], values[(length/2)-1]])
 
 
 class BurpExtender(
@@ -48,12 +48,173 @@ class BurpExtender(
         callbacks.setExtensionName(EXTENSION_NAME)
 
         # Construct UI
-
-        self._tabbedPane = JTabbedPane()
-
         insets = Insets(3, 3, 3, 3)
+        self._messageEditor = callbacks.createMessageEditor(self, True)
+        attackPanel = self._constructAttackPanel(
+            insets, self._messageEditor.getComponent())
+        resultsPanel = self._constructResultsPanel(insets)
+        aboutPanel = self._constructAboutPanel(insets)
+        self._tabbedPane = JTabbedPane()
+        self._tabbedPane.addTab("Attack", attackPanel)
+        self._tabbedPane.addTab("Results", resultsPanel)
+        self._tabbedPane.addTab("About", aboutPanel)
+        callbacks.addSuiteTab(self)
 
-        # Target Panel
+    # Implement ITab
+    def getTabCaption(self):
+        return EXTENSION_NAME
+
+    def getUiComponent(self):
+        return self._tabbedPane
+
+    # Implement IMessageEditorController
+    def getHttpService(self):
+        self._updateClassFromUI()
+        return self._httpService
+
+    def getRequest(self):
+        self._updateClassFromUI()
+        return self._request
+
+    def getResponse(self):
+        return None
+
+    # Implement IContextMenuFactory
+    def createMenuItems(self, contextMenuInvocation):
+        messages = contextMenuInvocation.getSelectedMessages()
+
+        # Only add menu item if a single request is selected
+        if len(messages) == 1:
+            self._contextMenuData = messages
+            menu_item = JMenuItem(
+                "Send to {}".format(EXTENSION_NAME),
+                actionPerformed=self._contextMenuItemClicked
+            )
+            return [menu_item]
+
+    def _contextMenuItemClicked(self, _):
+        httpRequestResponse = self._contextMenuData[0]
+
+        # Update instance variables with request data
+        self._httpService = httpRequestResponse.getHttpService()
+        self._request = httpRequestResponse.getRequest()
+
+        # Update fields in tab
+        self._hostTextField.setText(self._httpService.getHost())
+        self._portTextField.setText(str(self._httpService.getPort()))
+        self._protocolCheckBox.setSelected(
+            True if self._httpService.getProtocol() == "https" else False)
+        self._messageEditor.setMessage(self._request, True)
+
+    def _startAttack(self, _):
+
+        # Switch to results tab
+        self._tabbedPane.setSelectedIndex(1)
+
+        # Clear results table
+        self._resultsTableModel.setRowCount(0)
+
+        # Set progress bar to 0%
+        self._progressBar.setValue(0)
+
+        Thread(target=self._makeHttpRequests).start()
+
+    def _makeHttpRequests(self):
+
+        # Set class variables from values in UI
+        self._updateClassFromUI()
+
+        self._responses = {}
+
+        # Set progress bar max to number of requests
+        self._progressBar.setMaximum(len(self._payloads) * self._numReq)
+
+        for payload in self._payloads:
+            self._responses[payload] = []
+            # Stick payload into request at specified position
+            # Use lambda function for replacement string to stop slashes being
+            # escaped
+            request = sub("\xa7[^\xa7]*\xa7", lambda x: payload, self._request)
+            request = self._updateContentLength(request)
+            for _ in xrange(self._numReq):
+                # Make request and work out how long it took in ms. This method
+                # is crude, but it's as good as we can get with current Burp
+                # APIs.
+                # See https://support.portswigger.net/customer/portal/questions/16227838-request-response-timing # noqa: E501
+                startTime = time()
+                response = self._callbacks.makeHttpRequest(
+                    self._httpService, request)
+                endTime = time()
+                duration = (endTime - startTime) * 1000
+
+                self._progressBar.setValue(self._progressBar.getValue() + 1)
+
+                self._responses[payload].append(duration)
+
+            # If all responses for this payload have
+            # been added to array, add to results table.
+            results = self._responses[payload]
+            numReqs = self._numReq
+            statusCode = response.getStatusCode()
+            analysis = self._helpers.analyzeResponse(
+                response.getResponse())
+            for header in analysis.getHeaders():
+                if header.lower().startswith("content-length"):
+                    content_length = int(header.split(": ")[1])
+            meanTime = round(mean(results), 3)
+            medianTime = round(median(results), 3)
+            minTime = int(min(results))
+            maxTime = int(max(results))
+            rowData = [
+                payload, numReqs, statusCode,
+                len(response.getResponse()), content_length, minTime,
+                maxTime, meanTime, medianTime]
+            self._resultsTableModel.addRow(rowData)
+
+    def _updateClassFromUI(self):
+        host = self._hostTextField.text
+        port = int(self._portTextField.text)
+        protocol = "https" if self._protocolCheckBox.isSelected() else "http"
+        # In an effort to prevent DNS queries introducing a delay, an attempt
+        # was made to use the IP address of the destination web server instead
+        # of the hostname when building the HttpService. Unfortunately it
+        # caused issues with HTTPS requests, probably because of SNIs. As an
+        # alternative, the hostname is resolved in the next line and hopefully
+        # it will be cached at that point.
+        gethostbyname(host)
+
+        self._httpService = self._helpers.buildHttpService(
+            host, port, protocol)
+        self._request = self._messageEditor.getMessage()
+        self._numReq = int(self._requestsNumTextField.text)
+        self._payloads = set(self._payloadTextArea.text.split("\n"))
+
+    def _addPayload(self, _):
+        request = self._messageEditor.getMessage()
+        selection = self._messageEditor.getSelectionBounds()
+        if selection[0] == selection[1]:
+            # No text selected so in/out points are same
+            request.insert(selection[0], 0xa7)
+            request.insert(selection[1], 0xa7)
+        else:
+            request.insert(selection[0], 0xa7)
+            request.insert(selection[1]+1, 0xa7)
+        self._messageEditor.setMessage(request, True)
+
+    def _clearPayloads(self, _):
+        request = self._messageEditor.getMessage()
+        request = self._helpers.bytesToString(request).replace("\xa7", "")
+        self._messageEditor.setMessage(request, True)
+
+    def _updateContentLength(self, request):
+        messageSize = len(request)
+        bodyOffset = self._helpers.analyzeRequest(request).getBodyOffset()
+        contentLength = messageSize - bodyOffset
+        contentLengthHeader = "Content-Length: {}".format(contentLength)
+        request = sub("Content-Length: \\d+", contentLengthHeader, request)
+        return request
+
+    def _constructAttackPanel(self, insets, messageEditorComponent):
         attackPanel = JPanel(GridBagLayout())
 
         targetHeadingLabel = JLabel("<html><b>Target</b></html>")
@@ -130,8 +291,6 @@ class BurpExtender(
         requestHeadingLabelConstraints.insets = insets
         attackPanel.add(requestHeadingLabel, requestHeadingLabelConstraints)
 
-        self._messageEditor = callbacks.createMessageEditor(self, True)
-        messageEditorComponent = self._messageEditor.getComponent()
         messageEditorComponentConstraints = GridBagConstraints()
         messageEditorComponentConstraints.gridx = 0
         messageEditorComponentConstraints.gridy = 5
@@ -203,7 +362,9 @@ class BurpExtender(
         attackPanel.add(
             self._requestsNumTextField, requestsNumTextFieldConstraints)
 
-        # Results Panel
+        return attackPanel
+
+    def _constructResultsPanel(self, insets):
         resultsPanel = JPanel(GridBagLayout())
 
         self._progressBar = JProgressBar()
@@ -242,7 +403,9 @@ class BurpExtender(
         resultsScrollPaneConstraints.fill = GridBagConstraints.BOTH
         resultsPanel.add(resultsScrollPane, resultsScrollPaneConstraints)
 
-        # About Panel
+        return resultsPanel
+
+    def _constructAboutPanel(self, insets):
         aboutPanel = JPanel(GridBagLayout())
         with open("about.html") as file:
             aboutBody = file.read()
@@ -254,172 +417,9 @@ class BurpExtender(
         aboutLabelConstraints.insets = insets
         aboutLabelConstraints.fill = GridBagConstraints.HORIZONTAL
         aboutLabelConstraints.anchor = GridBagConstraints.PAGE_START
-
         aboutPanel.add(aboutLabel, aboutLabelConstraints)
 
-        self._tabbedPane.addTab("Attack", attackPanel)
-        self._tabbedPane.addTab("Results", resultsPanel)
-        self._tabbedPane.addTab("About", aboutPanel)
-
-        callbacks.addSuiteTab(self)
-
-    # Implement ITab
-    def getTabCaption(self):
-        return EXTENSION_NAME
-
-    def getUiComponent(self):
-        return self._tabbedPane
-
-    # Implement IMessageEditorController
-    def getHttpService(self):
-        self._updateClassFromUI()
-        return self._httpService
-
-    def getRequest(self):
-        # Strangely this doesn't seem necessary; returning None also works.
-        self._updateClassFromUI()
-        return self._request
-
-    def getResponse(self):
-        return None
-
-    # Implement IContextMenuFactory
-    def createMenuItems(self, contextMenuInvocation):
-        messages = contextMenuInvocation.getSelectedMessages()
-
-        # Only add menu item if a single request is selected
-        if len(messages) == 1:
-            self._contextMenuData = messages
-            menu_item = JMenuItem(
-                "Send to {}".format(EXTENSION_NAME),
-                actionPerformed=self._contextMenuItemClicked
-            )
-            return [menu_item]
-
-    def _contextMenuItemClicked(self, _):
-        httpRequestResponse = self._contextMenuData[0]
-
-        # Update class variables with request data
-        self._httpService = httpRequestResponse.getHttpService()
-        self._request = httpRequestResponse.getRequest()
-
-        # Update fields in tab
-        self._hostTextField.setText(self._httpService.getHost())
-        self._portTextField.setText(str(self._httpService.getPort()))
-        self._protocolCheckBox.setSelected(
-            True if self._httpService.getProtocol() == "https" else False)
-        self._messageEditor.setMessage(self._request, True)
-
-    def _startAttack(self, _):
-
-        # Switch to results tab
-        self._tabbedPane.setSelectedIndex(1)
-
-        # Clear results table
-        self._resultsTableModel.setRowCount(0)
-
-        # Set progress bar to 0%
-        self._progressBar.setValue(0)
-
-        Thread(target=self._makeHttpRequests).start()
-
-    def _makeHttpRequests(self):
-
-        # Set class variables from values in UI
-        self._updateClassFromUI()
-
-        self._responses = {}
-
-        # Set progress bar max to number of requests
-        self._progressBar.setMaximum(len(self._payloads) * self._numReq)
-
-        for payload in self._payloads:
-            self._responses[payload] = []
-            # Stick payload into request at specified position
-            # Use lambda function for replacement string to stop slashes being
-            # escaped
-            request = sub("\xa7[^\xa7]*\xa7", lambda x: payload, self._request)
-            request = self._updateContentLength(request)
-            for _ in xrange(self._numReq):
-                # Make request and work out how long it took in ms. This method
-                # is crude, but it's as good as we can get with current Burp
-                # APIs. See https://bit.ly/2JX29Nf
-                startTime = time()
-                response = self._callbacks.makeHttpRequest(
-                    self._httpService, request)
-                endTime = time()
-                duration = (endTime - startTime) * 1000
-
-                self._progressBar.setValue(self._progressBar.getValue() + 1)
-
-                self._responses[payload].append(duration)
-
-                # If all responses for this payload have
-                #  been added to array, add to results table.
-                if len(self._responses[payload]) == self._numReq:
-                    # Add results to results tab
-                    results = self._responses[payload]
-                    numReqs = self._numReq
-                    statusCode = response.getStatusCode()
-                    analysis = self._helpers.analyzeResponse(
-                        response.getResponse())
-                    for header in analysis.getHeaders():
-                        if header.startswith("Content-Length"):
-                            content_length = int(header.split(": ")[1])
-                    meanTime = round(mean(results), 3)
-                    medianTime = round(median(results), 3)
-                    minTime = int(min(results))
-                    maxTime = int(max(results))
-                    rowData = [
-                        payload, numReqs, statusCode,
-                        len(response.getResponse()), content_length, minTime,
-                        maxTime, meanTime, medianTime]
-                    self._resultsTableModel.addRow(rowData)
-
-    def _updateClassFromUI(self):
-        host = self._hostTextField.text
-        port = int(self._portTextField.text)
-        protocol = "https" if self._protocolCheckBox.isSelected() else "http"
-
-        # I previously tried using the IP address of the destination web server
-        # instead of the hostname when building the HttpService. This was in an
-        # attempt to prevent DNS queries introducing a delay. Unfortunately it
-        # caused issues with HTTPS requests, probably because of SNIs. As an
-        # alternative, the hostname is resolved in the next line and hopefully
-        # it will be cached at that point.
-        gethostbyname(host)
-
-        self._httpService = self._helpers.buildHttpService(
-            host, port, protocol)
-        self._request = self._messageEditor.getMessage()
-        self._numReq = int(self._requestsNumTextField.text)
-        self._payloads = set(self._payloadTextArea.text.split("\n"))
-
-    def _addPayload(self, _):
-        request = self._messageEditor.getMessage()
-        selection = self._messageEditor.getSelectionBounds()
-        if selection[0] == selection[1]:
-            # No text selected so in/out points are same
-            request.insert(selection[0], 0xa7)
-            request.insert(selection[1], 0xa7)
-        else:
-            request.insert(selection[0], 0xa7)
-            request.insert(selection[1]+1, 0xa7)
-        self._messageEditor.setMessage(request, True)
-
-    def _clearPayloads(self, _):
-        request = self._messageEditor.getMessage()
-        request = self._helpers.bytesToString(request).replace("\xa7", "")
-        self._messageEditor.setMessage(request, True)
-
-    def _updateContentLength(self, request):
-        # There surely must be a better way to do this
-        messageSize = len(request)
-        bodyOffset = self._helpers.analyzeRequest(request).getBodyOffset()
-        contentLength = messageSize - bodyOffset
-        contentLengthHeader = "Content-Length: {}".format(contentLength)
-        request = sub("Content-Length: \\d+", contentLengthHeader, request)
-        return request
+        return aboutPanel
 
 
 # Required for coloured cells
@@ -461,17 +461,9 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
                 blue = 111/256.0
 
                 if isSelected:
-                    red -= 0.25
-                    if red < 0:
-                        red = 0.0
-
-                    green -= 0.25
-                    if green < 0:
-                        green = 0.0
-
-                    blue -= 0.25
-                    if blue < 0:
-                        blue = 0.0
+                    red = max(0.0, red-0.25)
+                    green = max(0.0, green-0.25)
+                    blue = max(0.0, blue-0.25)
 
                 renderer.setBackground(Color(red, green, blue))
         return renderer
@@ -479,16 +471,18 @@ class ColoredTableCellRenderer(DefaultTableCellRenderer):
 
 # Required for proper sorting
 class ResultsTableModel(DefaultTableModel):
+
+    # Native java types are required here for proper sorting
+    _types = [
+        java.lang.String,
+        java.lang.Integer,
+        java.lang.Integer,
+        java.lang.Integer,
+        java.lang.Integer,
+        java.lang.Integer,
+        java.lang.Integer,
+        java.lang.Float,
+        java.lang.Float]
+
     def getColumnClass(self, column):
-        # Native java types are required here for proper sortings
-        types = [
-            java.lang.String,
-            java.lang.Integer,
-            java.lang.Integer,
-            java.lang.Integer,
-            java.lang.Integer,
-            java.lang.Integer,
-            java.lang.Integer,
-            java.lang.Float,
-            java.lang.Float]
-        return types[column]
+        return self._types[column]
