@@ -16,7 +16,7 @@ from burp import (
 EXTENSION_NAME = "Timeinator"
 COLUMNS = [
     "Payload", "Number of Requests", "Status Code", "Length (B)", "Body (B)",
-    "Minimum (ms)", "Maximum (ms)", "Mean (ms)", "Median (ms)"]
+    "Minimum (ms)", "Maximum (ms)", "Mean (ms)", "Median (ms)", "StdDev (ms)"]
 
 
 def mean(values):
@@ -33,6 +33,10 @@ def median(values):
         # Even number of values, so mean of middle two
         return mean([values[length/2], values[(length/2)-1]])
 
+def stdDev(values):
+    ss = sum((x - mean(values))**2 for x in values)
+    pvar = ss/len(values)
+    return pvar**0.5
 
 class BurpExtender(
           IBurpExtender, ITab, IContextMenuFactory, IMessageEditorController):
@@ -163,12 +167,13 @@ class BurpExtender(
                     content_length = int(header.split(": ")[1])
             meanTime = round(mean(results), 3)
             medianTime = round(median(results), 3)
+            stdDevTime = round(stdDev(results), 3)
             minTime = int(min(results))
             maxTime = int(max(results))
             rowData = [
                 payload, numReqs, statusCode,
                 len(response.getResponse()), content_length, minTime,
-                maxTime, meanTime, medianTime]
+                maxTime, meanTime, medianTime, stdDevTime]
             self._resultsTableModel.addRow(rowData)
 
     def _updateClassFromUI(self):
@@ -381,7 +386,7 @@ class BurpExtender(
         resultsTable = JTable(self._resultsTableModel)
         resultsTable.setAutoCreateRowSorter(True)
         cellRenderer = ColoredTableCellRenderer()
-        for index in [5, 6, 7, 8]:
+        for index in [5, 6, 7, 8, 9]:
             column = resultsTable.columnModel.getColumn(index)
             column.cellRenderer = cellRenderer
         resultsTable.getColumnModel().getColumn(0).setPreferredWidth(99999999)
@@ -391,8 +396,9 @@ class BurpExtender(
         resultsTable.getColumnModel().getColumn(4).setMinWidth(80)
         resultsTable.getColumnModel().getColumn(5).setMinWidth(110)
         resultsTable.getColumnModel().getColumn(6).setMinWidth(110)
-        resultsTable.getColumnModel().getColumn(7).setMinWidth(110)
+        resultsTable.getColumnModel().getColumn(7).setMinWidth(90)
         resultsTable.getColumnModel().getColumn(8).setMinWidth(110)
+        resultsTable.getColumnModel().getColumn(9).setMinWidth(110)
         resultsTable.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS)
         resultsScrollPane = JScrollPane(resultsTable)
         resultsScrollPaneConstraints = GridBagConstraints()
@@ -481,6 +487,7 @@ class ResultsTableModel(DefaultTableModel):
         java.lang.Integer,
         java.lang.Integer,
         java.lang.Integer,
+        java.lang.Float,
         java.lang.Float,
         java.lang.Float]
 
