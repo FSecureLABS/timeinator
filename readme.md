@@ -30,6 +30,8 @@ HTTP(S) requests made by this extension will not be shown in the proxy history, 
 Credits
 -------
 
-Timeinator is by [graeme.robinson@mwrinfosecurity.com](mailto:graeme.robinson@mwrinfosecurity.com)
+Timeinator is by [graeme.robinson@f-secure.com](mailto:graeme.robinson@f-secure.com)
 
-Credit to Oliver Simonnet for coming up with the "Timeinator" name ;-)
+Thanks to:
+* @rbsec for adding standard deviation to the results
+* Oliver Simonnet for coming up with the "Timeinator" name
