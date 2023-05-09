@@ -162,6 +162,7 @@ class BurpExtender(
             statusCode = response.getStatusCode()
             analysis = self._helpers.analyzeResponse(
                 response.getResponse())
+            content_length = 0
             for header in analysis.getHeaders():
                 if header.lower().startswith("content-length"):
                     content_length = int(header.split(": ")[1])
